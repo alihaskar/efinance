@@ -5,7 +5,7 @@ A library to automate downloading quality tick data from Exness data archives
 
 ------
 
-from efinance.downloader import exness
+from exfinance.downloader import exness
 
 exness = exness()
 
