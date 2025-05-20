@@ -17,7 +17,7 @@ poetry install
 
 ### Using pip
 ```bash
-pip install git+https://github.com/<your-username>/exfinance.git
+pip install git@github.com:alihaskar/efinance.git
 ```
 
 ## Usage
