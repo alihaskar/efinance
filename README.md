@@ -28,6 +28,13 @@ pairs = exness.get_available_pairs()
 data = exness.download('EURUSD', '2023-01-01', '2023-03-01')
 ```
 
+## Downloader Optimizations
+- Downloads are now parallelized for faster multi-month fetches (uses ThreadPoolExecutor).
+- CSVs are read directly from zip files in memory if you don't specify a save path (no disk I/O).
+- Error handling is granular: network, extraction, and parsing errors are logged separately.
+- Date range validation: start date must not be after end date; monthly frequency uses last day of month.
+- Logging is always configured for consistent output.
+
 ## Linting
 This project uses [ruff](https://github.com/astral-sh/ruff) for linting:
 ```bash

@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -7,6 +8,8 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 import pandas as pd
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +53,14 @@ class Exness:
     def _parse_dates(self, start: Union[str, datetime],
                      end: Optional[Union[str, datetime]] = None) -> pd.DatetimeIndex:
         """
-        Parse start and end dates into a range of months.
+        Parse start and end dates into a range of months (last day of each month).
         Args:
             start: Start date in 'YYYY-MM-DD' format or datetime object
             end: End date in 'YYYY-MM-DD' format or datetime object (defaults to today)
         Returns:
-            pd.DatetimeIndex: Range of months between start and end dates
+            pd.DatetimeIndex: Range of months (last day of each month) between start and end dates
+        Raises:
+            ValueError: If start > end
         """
         if isinstance(start, str):
             start = pd.to_datetime(start)
@@ -63,6 +68,8 @@ class Exness:
             end = datetime.today()
         elif isinstance(end, str):
             end = pd.to_datetime(end)
+        if start > end:
+            raise ValueError(f"Start date {start} is after end date {end}.")
         return pd.date_range(start, end, freq='M')
 
     def download(self, pair: str, start: Union[str, datetime],
@@ -84,22 +91,47 @@ class Exness:
         if pair not in self.available_pairs:
             raise ValueError(f"Pair '{pair}' not available. Use get_available_pairs() to see available options.")
         dates = self._parse_dates(start, end)
-        save_path = Path(save_path) if save_path else Path.cwd()
+        save_path = Path(save_path) if save_path else None
         data_frames = []
-        for date in dates:
+        errors = []
+
+        def fetch_and_parse(date):
             url = (f"{self.BASE_URL}{pair}/{date.year}/"
                   f"{date.strftime('%m')}/Exness_{pair}_{date.year}_{date.strftime('%m')}.zip")
             logger.info(f"Downloading: {pair} | {date.strftime('%Y-%m')} from {url}")
             try:
                 with urlopen(url) as response:
-                    with ZipFile(BytesIO(response.read())) as zip_file:
-                        zip_file.extractall(path=save_path)
-                file_path = save_path / f"Exness_{pair}_{date.year}_{date.strftime('%m')}.csv"
-                df = pd.read_csv(file_path, parse_dates=['Timestamp'], index_col=['Timestamp'])
-                data_frames.append(df)
+                    zip_bytes = BytesIO(response.read())
             except Exception as e:
-                logger.error(f"Error downloading {pair} for {date.strftime('%Y-%m')}: {e}")
-                continue
+                logger.error(f"Network error for {pair} {date.strftime('%Y-%m')}: {e}")
+                errors.append((date, 'network', e))
+                return None
+            try:
+                with ZipFile(zip_bytes) as zip_file:
+                    csv_name = f"Exness_{pair}_{date.year}_{date.strftime('%m')}.csv"
+                    if save_path:
+                        zip_file.extractall(path=save_path)
+                        file_path = save_path / csv_name
+                        df = pd.read_csv(file_path, parse_dates=['Timestamp'], index_col=['Timestamp'])
+                    else:
+                        with zip_file.open(csv_name) as csvfile:
+                            df = pd.read_csv(csvfile, parse_dates=['Timestamp'], index_col=['Timestamp'])
+                    return df
+            except KeyError as e:
+                logger.error(f"Extraction error (missing CSV) for {pair} {date.strftime('%Y-%m')}: {e}")
+                errors.append((date, 'extraction', e))
+            except Exception as e:
+                logger.error(f"Parsing error for {pair} {date.strftime('%Y-%m')}: {e}")
+                errors.append((date, 'parsing', e))
+            return None
+
+        with ThreadPoolExecutor() as executor:
+            future_to_date = {executor.submit(fetch_and_parse, date): date for date in dates}
+            for future in as_completed(future_to_date):
+                df = future.result()
+                if df is not None:
+                    data_frames.append(df)
+
         if not data_frames:
             raise ValueError(f"No data was downloaded for {pair} in the specified period: {dates[0]} to {dates[-1]}")
         return pd.concat(data_frames, axis=0)
