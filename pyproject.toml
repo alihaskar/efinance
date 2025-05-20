@@ -1,14 +1,22 @@
 [tool.poetry]
-name = "efinance"
+name = "exfinance"
 version = "0.1.0"
-description = ""
+description = "A Python package for downloading financial data from ex2archive"
 authors = ["Ali H. Askar <26202651+alihaskar@users.noreply.github.com>"]
 readme = "README.md"
+packages = [{include = "exfinance"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 pandas = "^2.2.2"
+numpy = "^1.26.4"
 
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.4.4"
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I"]
 
 [build-system]
 requires = ["poetry-core"]

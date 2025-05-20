@@ -1,13 +1,38 @@
-# efinance
-A library to automate downloading quality tick data from Exness data archives
+# exfinance
 
-+ Project under construction
+A Python package to automate downloading high-quality tick data from Exness data archives (ex2archive).
 
-------
+## Features
+- List all available trading pairs
+- Download historical tick data for any pair and date range
+- Save data as CSV or load directly as pandas DataFrame
+- Configurable data source URL
 
-from exfinance.downloader import exness
+## Installation
 
-exness = exness()
+### Using Poetry
+```bash
+poetry install
+```
 
-- exness.get_data() --> returns a list of all available assets data archive 
-- exness.download(pair, start, end) --> download data frame of the selected dates
+### Using pip
+```bash
+pip install git+https://github.com/<your-username>/exfinance.git
+```
+
+## Usage
+```python
+from exfinance import Exness
+exness = Exness()
+pairs = exness.get_available_pairs()
+data = exness.download('EURUSD', '2023-01-01', '2023-03-01')
+```
+
+## Linting
+This project uses [ruff](https://github.com/astral-sh/ruff) for linting:
+```bash
+poetry run ruff check .
+```
+
+## License
+MIT

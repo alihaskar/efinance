@@ -1,87 +1,105 @@
-import numpy as np 
-import pandas as pd 
-import urllib.request
-from urllib.request import urlopen
-from io import BytesIO
-from zipfile import ZipFile
+import logging
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
+from typing import List, Optional, Union
+from urllib.request import urlopen
+from zipfile import ZipFile
 
-class exness():
-    def __init__(self):
-        
-        self.get_data()
-        
-        
-    def get_data(self):
-        '''
-        get data from ex2archive
-        get_data will return a list of all available pairs and assets on ex2archive
-        '''
+import pandas as pd
 
-        url = 'https://ticks.ex2archive.com/ticks/'
-        uf = urllib.request.urlopen(url)
-        html = uf.read()
-        html = html.decode("utf-8")
-        html = html.split('\r\n')
-        html[2].split()[1].split(':')[1].split(',')[0].split('"')
+logger = logging.getLogger(__name__)
 
-        cols = []
+class Exness:
+    """Downloader for financial data from ex2archive."""
 
-        for i in range(1, len(html)-1):
-            raw = html[i].split()[1].split(':')[1].split(',')[0].split('"')[1]
-            cols.append(raw)
+    def __init__(self, base_url: str = 'https://ticks.ex2archive.com/ticks/'):
+        """
+        Initialize the Exness downloader and fetch available pairs.
+        Args:
+            base_url: Base URL for the ex2archive tick data.
+        """
+        self.BASE_URL = base_url
+        self.available_pairs = self._fetch_available_pairs()
 
-        self.cols = cols
-        
-        return self.cols
+    def _fetch_available_pairs(self) -> List[str]:
+        """
+        Fetch list of all available pairs from ex2archive.
+        Returns:
+            List[str]: List of available trading pairs
+        """
+        with urlopen(self.BASE_URL) as response:
+            html = response.read().decode("utf-8").split('\r\n')
+        pairs = []
+        for line in html[1:-1]:  # Skip header and empty last line
+            try:
+                pair = line.split()[1].split(':')[1].split(',')[0].strip('"')
+                pairs.append(pair)
+            except Exception as e:
+                logger.warning(f"Failed to parse pair from line: {line} ({e})")
+        return pairs
 
-    def parse_dates(self, start=None, end=None):
+    def get_available_pairs(self) -> List[str]:
+        """
+        Get list of available trading pairs.
+        Returns:
+            List[str]: List of available trading pairs
+        """
+        return self.available_pairs
 
-        '''
-        parse the start and end dates into datetime objects
-        the date format should be year-month-day:
-        ex:
-        '2022-10-31' 
-        '''
-        self.start = start
-        self.end = end
-        
-        if self.end is None:
-            self.end = datetime.today()
+    def _parse_dates(self, start: Union[str, datetime],
+                     end: Optional[Union[str, datetime]] = None) -> pd.DatetimeIndex:
+        """
+        Parse start and end dates into a range of months.
+        Args:
+            start: Start date in 'YYYY-MM-DD' format or datetime object
+            end: End date in 'YYYY-MM-DD' format or datetime object (defaults to today)
+        Returns:
+            pd.DatetimeIndex: Range of months between start and end dates
+        """
+        if isinstance(start, str):
+            start = pd.to_datetime(start)
+        if end is None:
+            end = datetime.today()
+        elif isinstance(end, str):
+            end = pd.to_datetime(end)
+        return pd.date_range(start, end, freq='M')
 
-        #self.start = datetime.strptime(self.start, '%Y-%m-%d')
-        #self.end = datetime.strptime(self.end, '%Y-%m-%d')
-        
-        self.dates = pd.date_range(self.start, self.end, freq='m')
-        
-        return self.dates
-        
-    def download(self, pair, start, end):
-        '''
-        returns a DataFrame Object for the selected pair 
-        start = start date  
-        end = end date
-        dates should be either a year or in the format of 'year-month-day' --> '2022-10-23'
-        '''
-        self.pair = pair.upper()
-
-        self.parse_dates()
-        
-        files = []
-        for i in range(len(self.dates)):
-            url = f'https://ticks.ex2archive.com/ticks/{self.pair}/{self.dates[i].year}/{datetime.strftime(self.dates[i], "%m")}/Exness_{self.pair}_{self.dates[i].year}_{datetime.strftime(self.dates[i], "%m")}.zip'
-            print(f'downloading: {self.pair} | {datetime.strftime(self.dates[i], "%m")}')
-            http_response = urlopen(url)
-            zipfile = ZipFile(BytesIO(http_response.read()))
-            zipfile.extractall(path='')
-            file = f'Exness_{self.pair}_{self.dates[i].year}_{datetime.strftime(self.dates[i], "%m")}.csv'
-            files.append(file)
-        
-        data = pd.DataFrame()
-        
-        for file in files:
-            f = pd.read_csv(file, parse_dates=True, index_col=['Timestamp'])
-            data = data.append(f)
-        self.data = data
-        
-        return self.data
+    def download(self, pair: str, start: Union[str, datetime],
+                end: Optional[Union[str, datetime]] = None,
+                save_path: Optional[Union[str, Path]] = None) -> pd.DataFrame:
+        """
+        Download historical data for a specific trading pair.
+        Args:
+            pair: Trading pair symbol (e.g., 'EURUSD')
+            start: Start date in 'YYYY-MM-DD' format or datetime object
+            end: End date in 'YYYY-MM-DD' format or datetime object (defaults to today)
+            save_path: Optional path to save downloaded files (defaults to current directory)
+        Returns:
+            pd.DataFrame: Historical data for the specified pair and date range
+        Raises:
+            ValueError: If the pair is not available or no data is downloaded.
+        """
+        pair = pair.upper()
+        if pair not in self.available_pairs:
+            raise ValueError(f"Pair '{pair}' not available. Use get_available_pairs() to see available options.")
+        dates = self._parse_dates(start, end)
+        save_path = Path(save_path) if save_path else Path.cwd()
+        data_frames = []
+        for date in dates:
+            url = (f"{self.BASE_URL}{pair}/{date.year}/"
+                  f"{date.strftime('%m')}/Exness_{pair}_{date.year}_{date.strftime('%m')}.zip")
+            logger.info(f"Downloading: {pair} | {date.strftime('%Y-%m')} from {url}")
+            try:
+                with urlopen(url) as response:
+                    with ZipFile(BytesIO(response.read())) as zip_file:
+                        zip_file.extractall(path=save_path)
+                file_path = save_path / f"Exness_{pair}_{date.year}_{date.strftime('%m')}.csv"
+                df = pd.read_csv(file_path, parse_dates=['Timestamp'], index_col=['Timestamp'])
+                data_frames.append(df)
+            except Exception as e:
+                logger.error(f"Error downloading {pair} for {date.strftime('%Y-%m')}: {e}")
+                continue
+        if not data_frames:
+            raise ValueError(f"No data was downloaded for {pair} in the specified period: {dates[0]} to {dates[-1]}")
+        return pd.concat(data_frames, axis=0)
