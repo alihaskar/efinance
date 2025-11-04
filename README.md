@@ -1,5 +1,9 @@
 # exfinance
 
+[![PyPI version](https://badge.fury.io/py/exfinance.svg)](https://badge.fury.io/py/exfinance)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A Python package to automate downloading high-quality tick data from Exness data archives (ex2archive).
 
 ## Features
@@ -10,14 +14,21 @@ A Python package to automate downloading high-quality tick data from Exness data
 
 ## Installation
 
-### Using Poetry
+Install from PyPI:
 ```bash
-poetry install
+pip install exfinance
 ```
 
-### Using pip
+Or using Poetry:
 ```bash
-pip install git@github.com:alihaskar/efinance.git
+poetry add exfinance
+```
+
+### Development Installation
+```bash
+git clone https://github.com/alihaskar/efinance.git
+cd efinance
+poetry install
 ```
 
 ## Usage
